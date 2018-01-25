@@ -36,9 +36,11 @@ class fitEdge: public g2o::BaseUnaryEdge<2, Eigen::Vector2d, fitVertex>
 {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-    fitEdge(double x):BaseUnaryEdge()
+    fitEdge(double x, double y, double z):BaseUnaryEdge()
     {
         x_ = x;
+        y_ = y;
+        z_ = z;
     }
 
 
@@ -46,8 +48,8 @@ public:
     {
         const fitVertex* pVertex = static_cast<const fitVertex*>(_vertices[0]);
         const Eigen::Vector4d abcd = pVertex->estimate();
-        _error(0) = _measurement(0) - exp(abcd(0)*x_*x_ + abcd(1)*x_ );
-        _error(1) = _measurement(1) - exp(abcd(2)*x_*x_ + abcd(3)*x_ );
+        _error(0) = y_ - exp(abcd(0)*x_*x_ + abcd(1)*x_ );
+        _error(1) = z_ - exp(abcd(2)*x_*x_ + abcd(3)*x_ );
     }
 
 
@@ -55,17 +57,17 @@ public:
     virtual bool write(ostream& fout) const {}
 
 private:
-    double x_;
+    double x_, y_, z_;
 
 };
 
 int main()
 {
-    double a = 2.5, b = 4.0, c = 3, d = 8.2;
+    double a = 1.5, b = 6.3, c = 36, d = 118.2;
     int N = 100;
     double sigma = 2.0;
     cv::RNG rng;
-    double abcd[4] = {1,1,1,1};
+    double abcd[4] = {2,7,31,100};
 //    double cd[2] = {1, 1};
 
     vector<double> x_data, y_data, z_data;
@@ -107,10 +109,10 @@ int main()
 
     for (int i = 0; i < N; i++)
     {
-        fitEdge* edge = new fitEdge(x_data[i]);
+        fitEdge* edge = new fitEdge(x_data[i], y_data[i], z_data[i]);
         edge->setId(i);
         edge->setVertex(0, vertex);
-        edge->setMeasurement(Eigen::Vector2d(y_data[i], z_data[i]));
+        edge->setMeasurement(Eigen::Vector2d(0, 0));
 //        edge->setParameterId(0,0);
         edge->setInformation(Eigen::Matrix<double,2,2>::Identity());
         optimizer.addEdge(edge);
