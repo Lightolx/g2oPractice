@@ -11,25 +11,28 @@
 
 using namespace std;
 
-class fitVertex: public g2o::BaseVertex<3, Eigen::Vector3d>
+// BaseVertex <dimension of variable, type of variable>
+class fitVertex: public g2o::BaseVertex<4, Eigen::Vector4d>
 {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW  // needed when you have a member whose type is Eigen::Vector
     virtual void setToOriginImpl()
     {
-        _estimate = Eigen::Vector3d(0,0,0);
+        _estimate = Eigen::Vector4d(0,0,0,0);
     }
 
     virtual void oplusImpl (const double* delta)
     {
-        _estimate += Eigen::Vector3d(delta);
+        _estimate += Eigen::Vector4d(delta);
     }
 
     virtual bool read(istream& fin) {}
     virtual bool write(ostream& fout) const {}
 };
 
-class fitEdge: public g2o::BaseUnaryEdge<1, double, fitVertex>
+// BaseEdge, <dimension of observation, type of observation, Vertex type>
+// todo:: change the type of observation from double to Vector2d
+class fitEdge: public g2o::BaseUnaryEdge<2, Eigen::Vector2d, fitVertex>
 {
 public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -38,12 +41,15 @@ public:
         x_ = x;
     }
 
+
     void computeError()
     {
         const fitVertex* pVertex = static_cast<const fitVertex*>(_vertices[0]);
-        const Eigen::Vector3d abc = pVertex->estimate();
-        _error(0) = _measurement - exp(abc(0)*x_*x_ + abc(1)*x_ + abc(2));
+        const Eigen::Vector4d abcd = pVertex->estimate();
+        _error(0) = _measurement(0) - exp(abcd(0)*x_*x_ + abcd(1)*x_ );
+        _error(1) = _measurement(1) - exp(abcd(2)*x_*x_ + abcd(3)*x_ );
     }
+
 
     virtual bool read(istream& fin) {}
     virtual bool write(ostream& fout) const {}
@@ -59,8 +65,8 @@ int main()
     int N = 100;
     double sigma = 2.0;
     cv::RNG rng;
-    double abc[3] = {1, 1, 1};
-    double cd[2] = {1, 1};
+    double abcd[4] = {1,1,1,1};
+//    double cd[2] = {1, 1};
 
     vector<double> x_data, y_data, z_data;
 
@@ -70,14 +76,16 @@ int main()
     {
         double x = i/100.0;
         x_data.push_back(x);
-        double y = exp(a*x*x + b*x + c) + rng.gaussian(sigma);
+        double y = exp(a*x*x + b*x) + rng.gaussian(sigma);
         double z = exp(c*x*x + d*x) + rng.gaussian(sigma);
         y_data.push_back(y);
         z_data.push_back(z);
     }
 
+
+
 //    using Block = g2o::BlockSolver<g2o::BlockSolverTraits<3, 1> >;
-    typedef g2o::BlockSolver<g2o::BlockSolverTraits<3,1>> Block;
+    typedef g2o::BlockSolver<g2o::BlockSolverTraits<4,2>> Block;
     std::unique_ptr<Block::LinearSolverType> linearSolver;
     linearSolver = g2o::make_unique<g2o::LinearSolverDense<Block::PoseMatrixType>>();
     Block::LinearSolverType* LinearSolver = new g2o::LinearSolverDense<Block::PoseMatrixType>();
@@ -85,13 +93,15 @@ int main()
     g2o::OptimizationAlgorithmLevenberg* solver = new g2o::OptimizationAlgorithmLevenberg(
             g2o::make_unique<Block>(std::move(linearSolver)));
 
+
 //    g2o::OptimizationAlgorithmLevenberg* solver = new g2o::OptimizationAlgorithmLevenberg(solver_ptr);
     g2o::SparseOptimizer optimizer;
     optimizer.setAlgorithm(solver);
     optimizer.setVerbose(true);
 
+
     fitVertex* vertex = new fitVertex();
-    vertex->setEstimate(Eigen::Vector3d(abc));
+    vertex->setEstimate(Eigen::Vector4d(abcd));
     vertex->setId(0);
     optimizer.addVertex(vertex);
 
@@ -100,15 +110,18 @@ int main()
         fitEdge* edge = new fitEdge(x_data[i]);
         edge->setId(i);
         edge->setVertex(0, vertex);
-        edge->setMeasurement(y_data[i]);
-        edge->setInformation(Eigen::Matrix<double,1,1>::Identity());
+        edge->setMeasurement(Eigen::Vector2d(y_data[i], z_data[i]));
+//        edge->setParameterId(0,0);
+        edge->setInformation(Eigen::Matrix<double,2,2>::Identity());
         optimizer.addEdge(edge);
     }
+
 
     cout << "start optimization" << endl;
     optimizer.initializeOptimization();
     optimizer.optimize(100);
 
-    Eigen::Vector3d estimate = vertex->estimate();
+    Eigen::Vector4d estimate = vertex->estimate();
     cout << "estimated model: " << estimate.transpose() << endl;
+
 }
