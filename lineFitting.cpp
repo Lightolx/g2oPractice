@@ -63,7 +63,7 @@ private:
 
 int main()
 {
-    double a = 1.5, b = 6.3, c = 36, d = 118.2;
+    double a = 2, b = 6, c = 36, d = 118.2;
     int N = 100;
     double sigma = 2.0;
     cv::RNG rng;
@@ -121,7 +121,8 @@ int main()
 
     cout << "start optimization" << endl;
     optimizer.initializeOptimization();
-    optimizer.optimize(100);
+    // return返回的是优化迭代的次数
+    cout << "return is " << optimizer.optimize(100);
 
     Eigen::Vector4d estimate = vertex->estimate();
     cout << "estimated model: " << estimate.transpose() << endl;
