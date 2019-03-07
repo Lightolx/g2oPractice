@@ -88,8 +88,8 @@ int main(int argc, char **argv) {
     std::string path_to_pose(argv[1]);
     std::string path_to_constraint(argv[2]);
 
-    // step0.0: read pose ground truth
-    int nImages = 6500;
+    // step0.1: read pose ground truth
+    int nImages = 1;
     std::vector<Eigen::Matrix4d> vGtTcws;
     vGtTcws.reserve(nImages);
     if (!LoadGtPoses(path_to_pose, vGtTcws, true, nImages)) {
@@ -97,7 +97,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    //step0.1: read loop edge
+    //step0.2: read loop edge
     std::vector<Eigen::Matrix4d> vTcw12s;
     std::vector<std::pair<int, int> > vID12s;
     vTcw12s.reserve(10 * nImages);
@@ -107,11 +107,12 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    Eigen::Matrix4d T0 = vGtTcws[400];
-    Eigen::Matrix4d T1 = vGtTcws[600];
-    cout << "T0 is\n" << T0 << endl;
-    cout << "T1 is\n" << T1 << endl;
+    Eigen::Matrix4d Tcw = vGtTcws[0];
+    cout << "Tcw is\n" << Tcw << endl;
+    g2o::SE3Quat se3Quat0 = Converter2SE3Quat(Tcw);
+    cout << "se3Quat0 is\n" << se3Quat0 << endl;
 
+    /*
     // Step1: 构造一个g2o的optimizer
     // 在这里不要搞什么BlockSolver_6_3, 直接给BlockSolverX，免得出错
     typedef g2o::BlockSolverX Block;
@@ -122,45 +123,57 @@ int main(int argc, char **argv) {
             g2o::make_unique<Block>(std::move(linearSolver)));
     g2o::SparseOptimizer optimizer;
     optimizer.setAlgorithm(solver);
-    optimizer.setVerbose(true);
+//    optimizer.setVerbose(true);
 
     // Step2: 添加两个pose为vertex和以及构造edge
-    g2o::VertexSE3Expmap * vertex0= new g2o::VertexSE3Expmap();
-    vertex0->setEstimate(Converter2SE3Quat(T0));
-    vertex0->setId(0);
-    vertex0->setFixed(true);
-    optimizer.addVertex(vertex0);
+    for (int i = 0; i < nImages; ++i) {
+        g2o::VertexSE3Expmap* vertex = new g2o::VertexSE3Expmap();
+        Eigen::Matrix4d Tcw = vGtTcws[i];
+        cout << "Tcw is\n" << Tcw << endl;
+        cout << i << ", original is " << Tcw.inverse().topRightCorner(3, 1).transpose() << endl;
+        g2o::SE3Quat se3Quat0 = Converter2SE3Quat(Tcw);
+        Tcw = se3Quat0.to_homogeneous_matrix();
+        cout << "Tcw is\n" << Tcw << endl;
+        cout << i << ", original is " << Tcw.inverse().topRightCorner(3, 1).transpose() << endl;
 
-    g2o::VertexSE3Expmap * vertex1= new g2o::VertexSE3Expmap();
-    vertex1->setEstimate(Converter2SE3Quat(T1));
-    vertex1->setId(1);
-//    vertex1->setFixed(true);
-    optimizer.addVertex(vertex1);
+        cout << i << ", original is " << Tcw.inverse().topRightCorner(3, 1).transpose() << endl;
+        vertex->setEstimate(se3Quat0);
+        vertex->setId(i);
+        vertex->setFixed(true);
 
-    g2o::EdgeSE3Expmap* e = new g2o::EdgeSE3Expmap();
+        optimizer.addVertex(vertex);
+    }
 
-    g2o::SE3Quat obs = Converter2SE3Quat(T1 * T0.inverse());
-    e->setId(0);
-    e->setMeasurement(obs);
-    // 注意g2o的edge必须给Information Matrix，因为它计算代价函数时是 chi2 = error * Info * error.inv(),
-    // 如果不把Info初始化成单位阵I，那么Eigen::Matrix的默认构造函数会把Info初始化成零阵，
-    // 那么不论ComputeError()函数把Error计算成什么，到头来chi2()总会被计算成0,也就是优化器认为cost function永远都是零，
-    // 它不会对变量有任何优化
-    e->setInformation(Eigen::Matrix<double, 6, 6>::Identity());
-    e->setVertex(0, optimizer.vertex(0));
-    e->setVertex(1, optimizer.vertex(1));
-
-    optimizer.addEdge(e);
+    // Step1.2: 构造normal edge, 也就是根据pose算出来的前后帧之间的相对变换
+//    for (int i = 0; i < nImages - 1; ++i) {
+//        Eigen::Matrix4d Tcw1 = vGtTcws[i];
+//        Eigen::Matrix4d Tcw2 = vGtTcws[i+1];
+//        Eigen::Matrix4d Tcw12 = Tcw2 * Tcw1.inverse();
+//
+//        g2o::EdgeSE3Expmap* e = new g2o::EdgeSE3Expmap();
+//        e->setVertex(1, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(i)));
+//        e->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(i+1)));
+//        e->setId(i);
+//        e->setMeasurement(Converter2SE3Quat(Tcw12));
+//
+//        e->setInformation(Eigen::Matrix<double, 6, 6>::Identity());
+//
+//        optimizer.addEdge(e);
+//    }
 
     // Step3: optimize and the print out
-    cout << "start optimization" << endl;
-    optimizer.initializeOptimization();
-    optimizer.optimize(100);
+//    cout << "start optimization" << endl;
+//    optimizer.initializeOptimization();
+//    optimizer.optimize(100);
 
-    g2o::VertexSE3Expmap* vSE32 =
-            static_cast<g2o::VertexSE3Expmap*>(optimizer.vertex(1));
-    g2o::SE3Quat SE3quat2 = vSE32->estimate();
+    // Step2: 输出所有KF的pose
+    for (int i = 0; i < nImages; ++i) {
+        g2o::VertexSE3Expmap* vSE32 = static_cast<g2o::VertexSE3Expmap*>(optimizer.vertex(i));
+        g2o::SE3Quat SE3quat2 = vSE32->estimate();
 
-    Eigen::Matrix4d dif2 = SE3quat2.to_homogeneous_matrix();
-    cout << "after optimize, T1 is\n" << dif2 << endl;
+        Eigen::Matrix4d Tcw = SE3quat2.to_homogeneous_matrix();
+
+        cout << i << ", optimized is " << Tcw.inverse().topRightCorner(3, 1).transpose() << endl;
+    }
+    */
 }
